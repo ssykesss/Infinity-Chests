@@ -1,0 +1,33 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+	<RootNamespace>InfinityChests</RootNamespace>
+	<AssemblyName>InfinityChests</AssemblyName>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="ModFramework">
+      <HintPath>..\References\ModFramework.dll</HintPath>
+    </Reference>
+	
+    <Reference Include="OTAPI">
+      <HintPath>..\References\OTAPI.dll</HintPath>
+    </Reference>
+	
+    <Reference Include="TerrariaServer">
+      <HintPath>..\References\TerrariaServer.dll</HintPath>
+    </Reference>
+	
+    <Reference Include="TShockAPI">
+      <HintPath>..\References\TShockAPI.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>
