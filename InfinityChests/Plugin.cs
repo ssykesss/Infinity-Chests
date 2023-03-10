@@ -1,19 +1,19 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
-using System.Text;
-using Terraria;
-using Terraria.Localization;
 using TerrariaApi.Server;
 using TShockAPI;
 using TShockAPI.Hooks;
+using Terraria;
+using Terraria.Localization;
+using System.Configuration;
 
 namespace InfinityChests
 {
     [ApiVersion(2, 1)]
     public class Plugin : TerrariaPlugin
     {
-        public string ConfigPath { get { return Path.Combine(TShock.SavePath, "InfinityChests.json"); } }
+        public static string ConfigPath { get { return Path.Combine(TShock.SavePath, "InfinityChests.json"); } }
         public Config Config;
 
         public override string Author => "Lord Diogen";
@@ -21,15 +21,11 @@ namespace InfinityChests
         public override string Name => "Infinity Chests";
         public bool ChestRefill = true;
 
-        public Plugin(Main game) : base(game)
-        {
-        }
-        public void For()
-        {
-        }
+        public Plugin(Main game) : base(game) { }
+
         public override void Initialize()
         {
-            Commands.ChatCommands.Add(new Command("infchests", ChestRefill_, "chestrefill", "cr") { AllowServer = false });
+            Commands.ChatCommands.Add(new Command("infchests", ChestCommands, "chestrefill", "cr") { AllowServer = false });
             ServerApi.Hooks.NetGetData.Register(this, OnGetData);
             ServerApi.Hooks.NetSendData.Register(this, OnSendData);
             ServerApi.Hooks.GameInitialize.Register(this, OnInitialize);
@@ -40,13 +36,8 @@ namespace InfinityChests
         {
             try
             {
-                bool writeConfig = true;
                 string path = Path.Combine(TShock.SavePath, "InfinityChests.json");
                 Config = Config.Read(path);
-                if (writeConfig)
-                {
-                    Config.Write(ConfigPath);
-                }
                 foreach(string regions in Config.regions)
                 e.Player.SendSuccessMessage($"Chest refill region name: {regions}");
             }
@@ -58,25 +49,17 @@ namespace InfinityChests
         }
         private void OnInitialize(EventArgs args)
         {
-
             try
             {
-                bool writeConfig = true;
                 string path = Path.Combine(TShock.SavePath, "InfinityChests.json");
                 Config = Config.Read(path);
-                if (writeConfig)
-                {
-                    Config.Write(ConfigPath);
-                }
             }
             catch (Exception ex)
             {
                 Config = new Config();
                 TShock.Log.ConsoleError("{0}".SFormat(ex.ToString()));
             }
-
         }
-
         protected override void Dispose(bool disposing)
         {
             if (disposing)
@@ -113,6 +96,15 @@ namespace InfinityChests
                             return;
 
                         Chest chest = Main.chest[chestID];
+                        foreach (var chestRefillByName in Config.chestnames)
+                        {
+                            if (chest.name == chestRefillByName)
+                            {
+                                e.Handled = true;
+                                Item old = chest.item[slot];
+                                NetMessage.SendData(32, -1, -1, null, chestID, slot, old.stack, old.prefix, old.type);
+                            }
+                        }
                         if (TShock.Regions.InAreaRegion(chest.x, chest.y).Any(i => i.Name.Contains(regions)))
                         {
                             e.Handled = true;
@@ -157,9 +149,8 @@ namespace InfinityChests
                 }
             }
         }
-
-        void OnSendData(SendDataEventArgs e)
-        {
+        public void OnSendData(SendDataEventArgs e)
+        { 
             if (e.MsgId == PacketTypes.ChestName)
             {
                 if (e.ignoreClient == -1 || e.text != null)
@@ -186,7 +177,7 @@ namespace InfinityChests
                 }
             }
         }
-        public void ChestRefill_(CommandArgs args)
+        public void ChestCommands(CommandArgs args)
         {
             if (args.Parameters.Count == 0)
             {
@@ -194,10 +185,12 @@ namespace InfinityChests
                 args.Player.SendInfoMessage($"[c/fffff:Chest refill now is] {((ChestRefill) ? "[c/00E019:Enabled]" : "[c/DD4647:Disabled]")}");
                 return;
             }
-            else
+            if (args.Parameters[0] == "list")
             {
-                foreach (string regions in Config.regions)
-                args.Player.SendInfoMessage($"Chest refill region name: {regions}");
+                foreach (string reg in Config.regions)
+                    args.Player.SendInfoMessage("Chest refill regions: <{0}>", reg);
+                foreach (string name in Config.chestnames)
+                    args.Player.SendInfoMessage("Chest name for refill: <{0}>", name);
             }
         }
     }
