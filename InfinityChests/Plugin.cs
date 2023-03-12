@@ -6,7 +6,6 @@ using TShockAPI;
 using TShockAPI.Hooks;
 using Terraria;
 using Terraria.Localization;
-using System.Configuration;
 
 namespace InfinityChests
 {
@@ -20,12 +19,13 @@ namespace InfinityChests
         public override string Description => "TShock plugin for Terraria Minigames.";
         public override string Name => "Infinity Chests";
         public bool ChestRefill = true;
+        public bool ChestRefillByName = true;
 
         public Plugin(Main game) : base(game) { }
 
         public override void Initialize()
         {
-            Commands.ChatCommands.Add(new Command("infchests", ChestCommands, "chestrefill", "cr") { AllowServer = false });
+            Commands.ChatCommands.Add(new Command("infchests", ChestCommands, "chestrefill", "cr") { AllowServer = true });
             ServerApi.Hooks.NetGetData.Register(this, OnGetData);
             ServerApi.Hooks.NetSendData.Register(this, OnSendData);
             ServerApi.Hooks.GameInitialize.Register(this, OnInitialize);
@@ -38,8 +38,11 @@ namespace InfinityChests
             {
                 string path = Path.Combine(TShock.SavePath, "InfinityChests.json");
                 Config = Config.Read(path);
-                foreach(string regions in Config.regions)
-                e.Player.SendSuccessMessage($"Chest refill region name: {regions}");
+                foreach (string regions in Config.regions)
+                {
+                    TShock.Log.ConsoleInfo($"Chest refill region name: {regions}");
+                    e.Player.SendSuccessMessage($"Chest refill region name: {regions}");
+                }
             }
             catch (Exception ex)
             {
@@ -74,14 +77,15 @@ namespace InfinityChests
 
         public void OnGetData(GetDataEventArgs e)
         {
-            foreach (var regions in Config.regions)
-            {
-                var player = TShock.Players[e.Msg.whoAmI];
-                if (player == null)
-                    return;
-                if (ChestRefill == false)
-                    return;
+            var player = TShock.Players[e.Msg.whoAmI];
+            if (player == null)
+                return;
+            if (ChestRefill == false)
+                return;
 
+            #region REFILL BY CHEST NAME
+            if (ChestRefillByName)
+            {
                 if (e.MsgID == PacketTypes.ChestItem)
                 {
                     using (var r = new BinaryReader(new MemoryStream(e.Msg.readBuffer, e.Index, e.Length)))
@@ -105,6 +109,27 @@ namespace InfinityChests
                                 NetMessage.SendData(32, -1, -1, null, chestID, slot, old.stack, old.prefix, old.type);
                             }
                         }
+                    }
+                }
+            }
+            #endregion
+
+            foreach (var regions in Config.regions)
+            {
+                if (e.MsgID == PacketTypes.ChestItem)
+                {
+                    using (var r = new BinaryReader(new MemoryStream(e.Msg.readBuffer, e.Index, e.Length)))
+                    {
+                        var chestID = r.ReadInt16();
+                        var slot = r.ReadByte();
+                        var stack = r.ReadInt16();
+                        var prefix = r.ReadByte();
+                        var itemID = r.ReadInt16();
+
+                        if (chestID < 0 || chestID >= 8000)
+                            return;
+
+                        Chest chest = Main.chest[chestID];
                         if (TShock.Regions.InAreaRegion(chest.x, chest.y).Any(i => i.Name.Contains(regions)))
                         {
                             e.Handled = true;
@@ -182,15 +207,50 @@ namespace InfinityChests
             if (args.Parameters.Count == 0)
             {
                 ChestRefill = !ChestRefill;
+                if (!ChestRefill)
+                {
+                    foreach (var players in TShock.Players)
+                    {
+                        if (players == null)
+                            continue;
+
+                        NetMessage.SendData((int)PacketTypes.SyncPlayerChestIndex, -1, -1, NetworkText.Empty, players.Index, -1);
+                    }
+                }
                 args.Player.SendInfoMessage($"[c/fffff:Chest refill now is] {((ChestRefill) ? "[c/00E019:Enabled]" : "[c/DD4647:Disabled]")}");
                 return;
             }
-            if (args.Parameters[0] == "list")
+            string i = args.Parameters.FirstOrDefault();
+            switch (i.ToLower())
             {
-                foreach (string reg in Config.regions)
-                    args.Player.SendInfoMessage("Chest refill regions: <{0}>", reg);
-                foreach (string name in Config.chestnames)
-                    args.Player.SendInfoMessage("Chest name for refill: <{0}>", name);
+                case "list-chests":
+                    {
+                        foreach (string name in Config.chestnames)
+                            args.Player.SendInfoMessage("Chest name for refill: <{0}>", name);
+                    }
+                    break;
+                case "list-region":
+                    {
+                        foreach (string reg in Config.regions)
+                            args.Player.SendInfoMessage("Chest refill regions: <{0}>", reg);
+                    }
+                    break;
+                case "chests":
+                    {
+                        if (!ChestRefillByName)
+                        {
+                            foreach (var players in TShock.Players)
+                            {
+                                if (players == null)
+                                    continue;
+
+                                NetMessage.SendData((int)PacketTypes.SyncPlayerChestIndex, -1, -1, NetworkText.Empty, players.Index, -1);
+                            }
+                        }
+                        ChestRefillByName = !ChestRefillByName;
+                        args.Player.SendInfoMessage($"[c/fffff:Chest refill by name now is] {((ChestRefillByName) ? "[c/00E019:Enabled]" : "[c/DD4647:Disabled]")}");
+                    }
+                    break;
             }
         }
     }
