@@ -237,6 +237,7 @@ namespace InfinityChests
                     break;
                 case "chests":
                     {
+                        ChestRefillByName = !ChestRefillByName;
                         if (!ChestRefillByName)
                         {
                             foreach (var players in TShock.Players)
@@ -247,7 +248,6 @@ namespace InfinityChests
                                 NetMessage.SendData((int)PacketTypes.SyncPlayerChestIndex, -1, -1, NetworkText.Empty, players.Index, -1);
                             }
                         }
-                        ChestRefillByName = !ChestRefillByName;
                         args.Player.SendInfoMessage($"[c/fffff:Chest refill by name now is] {((ChestRefillByName) ? "[c/00E019:Enabled]" : "[c/DD4647:Disabled]")}");
                     }
                     break;
