@@ -39,10 +39,7 @@ namespace InfinityChests
                 string path = Path.Combine(TShock.SavePath, "InfinityChests.json");
                 Config = Config.Read(path);
                 foreach (string regions in Config.regions)
-                {
-                    TShock.Log.ConsoleInfo($"Chest refill region name: {regions}");
                     e.Player.SendSuccessMessage($"Chest refill region name: {regions}");
-                }
             }
             catch (Exception ex)
             {
