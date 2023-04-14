@@ -6,6 +6,9 @@ using TShockAPI;
 using TShockAPI.Hooks;
 using Terraria;
 using Terraria.Localization;
+using System.Collections.Generic;
+using Microsoft.Xna.Framework;
+using Terraria.ID;
 
 namespace InfinityChests
 {
@@ -217,35 +220,107 @@ namespace InfinityChests
                 args.Player.SendInfoMessage($"[c/fffff:Chest refill now is] {((ChestRefill) ? "[c/00E019:Enabled]" : "[c/DD4647:Disabled]")}");
                 return;
             }
-            string i = args.Parameters.FirstOrDefault();
-            switch (i.ToLower())
+            else if (args.Parameters.Count > 2)
+                args.Player.SendErrorMessage($"Invalid syntax! /cr -c, /cr");
+            else if (args.Parameters[0] == "-c")
             {
-                case "list-chests":
+                ChestRefillByName = !ChestRefillByName;
+                if (!ChestRefillByName)
+                {
+                    foreach (var players in TShock.Players)
                     {
-                        foreach (string name in Config.chestnames)
-                            args.Player.SendInfoMessage("Chest name for refill: <{0}>", name);
-                    }
-                    break;
-                case "list-region":
-                    {
-                        foreach (string reg in Config.regions)
-                            args.Player.SendInfoMessage("Chest refill regions: <{0}>", reg);
-                    }
-                    break;
-                case "chests":
-                    {
-                        ChestRefillByName = !ChestRefillByName;
-                        if (!ChestRefillByName)
-                        {
-                            foreach (var players in TShock.Players)
-                            {
-                                if (players == null)
-                                    continue;
+                        if (players == null)
+                            continue;
 
-                                NetMessage.SendData((int)PacketTypes.SyncPlayerChestIndex, -1, -1, NetworkText.Empty, players.Index, -1);
-                            }
+                        NetMessage.SendData((int)PacketTypes.SyncPlayerChestIndex, -1, -1, NetworkText.Empty, players.Index, -1);
+                    }
+                }
+                args.Player.SendInfoMessage($"[c/fffff:Chest refill by name now is] {((ChestRefillByName) ? "[c/00E019:Enabled]" : "[c/DD4647:Disabled]")}");
+            }
+            var i = args.Parameters.FirstOrDefault() ?? "";
+            switch (i.ToLowerInvariant())
+            {
+                case "list":
+                    {
+                        foreach (var regions in Config.regions)
+                            args.Player.SendMessage($"Region names for chest refill: {regions}", Color.BurlyWood);
+                    }
+                    break;
+                case "list-c":
+                    {
+                        foreach (var chests in Config.chestnames)
+                            args.Player.SendMessage($"Chest names for chest refill: {chests}", Color.BurlyWood);
+                    }
+                    break;
+                case "add":
+                    {
+                        if (args.Parameters.Count < 2 || args.Parameters.Count > 2)
+                        {
+                            args.Player.SendErrorMessage("Invalid syntax! /cr add <string>");
+                            return;
                         }
-                        args.Player.SendInfoMessage($"[c/fffff:Chest refill by name now is] {((ChestRefillByName) ? "[c/00E019:Enabled]" : "[c/DD4647:Disabled]")}");
+                        string regionname = args.Parameters[1];
+                        if (regionname != null && regionname != "")
+                        {
+                            if (!Config.regions.Contains(regionname))
+                            {
+                                Config.regions.Add(regionname);
+                                Config.Write(ConfigPath);
+                            }
+                            args.Player.SendSuccessMessage("Region was successfully added to the refill function: {0}", regionname);
+                        }               
+                    }
+                    break;
+                case "del":
+                    {
+                        if (args.Parameters.Count < 2 || args.Parameters.Count > 2)
+                        {
+                            args.Player.SendErrorMessage("Invalid syntax! /cr del <string>");
+                            return;
+                        }
+                        string regionname = args.Parameters[1];
+                        if (regionname != null && regionname != "")
+                        {
+                            Config.regions.Remove(regionname);
+                            Config.Write(ConfigPath);
+                            args.Player.SendSuccessMessage("Region was successfully deleted from the refill function: {0}", regionname);
+                        }
+                    }         
+                    break;
+                    //Chest refill by chest name
+                case "add-c":
+                    {
+                        if (args.Parameters.Count < 2 || args.Parameters.Count > 2)
+                        {
+                            args.Player.SendErrorMessage("Invalid syntax! /cr add <string>");
+                            return;
+                        }
+                        string Chest = args.Parameters[1];
+                        if (Chest != null && Chest != "")
+                        {
+                            if (!Config.regions.Contains(Chest))
+                            {
+                                Config.chestnames.Add(Chest);
+                                Config.Write(ConfigPath);
+                            }
+                            args.Player.SendSuccessMessage("Chest was successfully added to the refill function: {0}", Chest);
+                        }
+                    }
+                    break;
+                case "del-c":
+                    {
+                        if (args.Parameters.Count < 2 || args.Parameters.Count > 2)
+                        {
+                            args.Player.SendErrorMessage("Invalid syntax! /cr del-c <string>");
+                            return;
+                        }
+                        string Chest = args.Parameters[1];
+                        if (Chest != null && Chest != "")
+                        {
+                            Config.chestnames.Remove(Chest);
+                            Config.Write(ConfigPath);
+                            args.Player.SendSuccessMessage("Chest was successfully deleted from the refill function: {0}", Chest);
+                        }
                     }
                     break;
             }
