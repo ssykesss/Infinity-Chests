@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "srv": {
+      "commandName": "Executable",
+      "executablePath": "D:\\NewTShock\\TShock.Server.exe",
+      "workingDirectory": "D:\\NewTShock"
+    }
+  }
+}
