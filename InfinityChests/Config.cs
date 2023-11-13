@@ -15,14 +15,14 @@ namespace InfinityChests
         }
         public static Config Read(string path)
         {
+            Config config = new Config();
             if (!File.Exists(path))
             {
-                Config config = new Config();
-                
-                File.WriteAllText(path, JsonConvert.SerializeObject(config, Formatting.Indented));
+                config.Write(path);
                 return config;
             }
-            return JsonConvert.DeserializeObject<Config>(File.ReadAllText(path));
+            config = JsonConvert.DeserializeObject<Config>(File.ReadAllText(path));
+            return config; 
         }
     }
 }

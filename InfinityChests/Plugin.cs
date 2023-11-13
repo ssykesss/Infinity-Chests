@@ -1,27 +1,25 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Terraria;
+using Terraria.Localization;
 using TerrariaApi.Server;
 using TShockAPI;
 using TShockAPI.Hooks;
-using Terraria;
-using Terraria.Localization;
-using System.Collections.Generic;
-using Microsoft.Xna.Framework;
-using Terraria.ID;
-using TShockAPI.DB;
 
 namespace InfinityChests
 {
     [ApiVersion(2, 1)]
     public class Plugin : TerrariaPlugin
     {
-        public static string ConfigPath => Path.Combine(TShock.SavePath, "InfinityChests.json");
+        public string SavePath => Path.Combine(TShock.SavePath, "InfinityChests.json");
         public Config config;
 
-        public override string Author => "Lord Diogen";
+        public override string Author => "Lord Diogen & Raiden";
         public override string Description => "TShock plugin for Terraria Minigames.";
         public override string Name => "Infinity Chests";
+        public override Version Version => new Version(1, 2);
         public bool ChestRefill = true;
         public bool ChestRefillByName = true;
 
@@ -47,21 +45,6 @@ namespace InfinityChests
             base.Dispose(disposing);
         }
 
-        private void OnReload(ReloadEventArgs e)
-        {
-            try
-            {
-                string path = Path.Combine(TShock.SavePath, "InfinityChests.json");
-                config = Config.Read(path);
-                foreach (string regions in config.regions)
-                    e.Player.SendSuccessMessage($"Chest refill region name: {regions}");
-            }
-            catch (Exception ex)
-            {
-                config = new Config();
-                TShock.Log.ConsoleError("{0}".SFormat(ex.ToString()));
-            }
-        }
         private void OnInitialize(EventArgs args)
         {
             try
@@ -75,15 +58,13 @@ namespace InfinityChests
                 TShock.Log.ConsoleError("{0}".SFormat(ex.ToString()));
             }
         }
+
         public void OnGetData(GetDataEventArgs e)
         {
-            string _regions = "";
-            foreach (var regionNames in config.regions)
-                _regions += ' ' + regionNames;
-            var _chest = new Chest();
             var player = TShock.Players[e.Msg.whoAmI];
-            if (player == null || !ChestRefill)
+            if (player == null)
                 return;
+
             if (e.MsgID == PacketTypes.ChestItem)
             {
                 using (var r = new BinaryReader(new MemoryStream(e.Msg.readBuffer, e.Index, e.Length)))
@@ -96,16 +77,25 @@ namespace InfinityChests
 
                     if (chestID < 0 || chestID >= 8000)
                         return;
-                    string currentChestName = "";
+                    string currentChest = "";
+                    string currentRegion = "";
                     Chest chest = Main.chest[chestID];
+                    string defaultChestName = chest.name;
+
                     foreach (string curChest in config.chestnames)
                     {
-                        currentChestName = curChest;
-                        if (currentChestName != chest.name)
-                            continue;
-                        break;
+                        currentChest = curChest;
+                        if (currentChest == chest.name)
+                            break;
                     }
-                    if (TShock.Regions.InAreaRegion(chest.x, chest.y).Any(i => i.Name.Contains(_regions.Split(' ')[0])) || chest.name == currentChestName && ChestRefillByName)
+                    foreach (string curRegion in config.regions)
+                    {
+                        currentRegion = curRegion;
+                        if (TShock.Regions.InAreaRegion(chest.x, chest.y).Any(i => i.Name == currentRegion))
+                            break;
+                    }
+
+                    if (TShock.Regions.InAreaRegion(chest.x, chest.y).Any(i => i.Name == currentRegion) && ChestRefill && chest.name == defaultChestName || chest.name == currentChest && ChestRefillByName)
                     {
                         e.Handled = true;
                         Item old = chest.item[slot];
@@ -117,54 +107,63 @@ namespace InfinityChests
             {
                 using (var r = new BinaryReader(new MemoryStream(e.Msg.readBuffer, e.Index, e.Length)))
                 {
-                    if (e.Handled)
-                        return;
-
                     int X = r.ReadInt16();
                     int Y = r.ReadInt16();
                     int index = Chest.FindChest(X, Y);
-
                     Chest chest = Main.chest[index];
-                    string currentChestName = "";
+
+                    string currentChest = "";
+                    string currentRegion = "";
                     foreach (string curChest in config.chestnames)
                     {
-                        currentChestName = curChest;
-                        if (currentChestName != chest.name)
-                            continue;
-                        break;
+                        currentChest = curChest;
+                        if (currentChest == chest.name)
+                            break;
                     }
-                    if (chest.name == currentChestName && !ChestRefillByName && !player.HasPermission("infchests"))
+                    foreach (string curRegion in config.regions)
+                    {
+                        currentRegion = curRegion;
+                        if (TShock.Regions.InAreaRegion(chest.x, chest.y).Any(i => i.Name.Contains(currentRegion)))
+                            break;
+                    }
+
+                    if (ChestRefillDisabled(player, chest, currentRegion, currentChest, X, Y))
                     {
                         player.SendErrorMessage("Chest refill disabled.");
                         e.Handled = true;
                         return;
                     }
-                    if (TShock.Regions.InAreaRegion(X, Y).Any(i => i.Name.Contains(_regions.Split(' ')[0].TrimStart())))
-                    {
-                        if (index <= -1)
-                            return;
-                        for (int i = 0; i < 40; i++)
-                            NetMessage.TrySendData(32, e.Msg.whoAmI, -1, null, index, i);
-                        NetMessage.TrySendData(33, e.Msg.whoAmI, -1, null, index); // 80 пакет?
-                    }
-                    else if (player.HasBuildPermission(X, Y, false))
+                    if (index <= -1)
+                        return;
+
+                    for (int i = 0; i < 40; i++)
+                        NetMessage.SendData((int)PacketTypes.ChestItem, player.Index, -1, null, index, i);
+                    NetMessage.SendData((int)PacketTypes.ChestOpen, player.Index, -1, null, index);
+                    if (player.HasBuildPermission(X, Y, false))
                         return;
                     e.Handled = true;
                 }
             }
             else if (e.MsgID == PacketTypes.ChestOpen)
             {
-                using (var r = new BinaryReader(new MemoryStream(e.Msg.readBuffer, e.Index, e.Length)))
-                {
-                    int index = r.ReadInt16();
-                    int Y = r.ReadInt16();
-                    int X = r.ReadInt16();
-
-                    if (TShock.Regions.InAreaRegion(X, Y).Any(i => i.Name.Contains(_regions.Split(' ')[0])))
-                        e.Handled = true;
-                }
+                int chestID = player.ActiveChest;
+                var chest = Main.chest[chestID];
+                int x = chest.x;
+                int y = chest.y;
+                if (!player.HasBuildPermission(x, y, false))
+                    e.Handled = true;
             }
         }
+
+        public bool ChestRefillDisabled(TSPlayer player, Chest chest, string curRegionName, string curChestName, int x, int y)
+        {
+            if (!player.HasPermission("infchests") && !ChestRefill && TShock.Regions.InAreaRegion(x, y).Any(i => i.Name.Contains(curRegionName) && chest.name != curChestName))
+                return true;
+            else if (!player.HasPermission("infchests") && !ChestRefillByName && chest.name == curChestName)
+                return true;
+            return false;
+        }
+
         public void OnSendData(SendDataEventArgs e)
         {
             if (e.MsgId == PacketTypes.ChestName)
@@ -193,6 +192,7 @@ namespace InfinityChests
                 }
             }
         }
+
         public void ChestCommands(CommandArgs args)
         {
             #region Chest refill by region name
@@ -213,16 +213,12 @@ namespace InfinityChests
                     return;
                 }
                 string regionname = args.Parameters[1];
-                if (regionname.Length != 0)
+                if (regionname.Length != 0 && !config.regions.Contains(regionname))
                 {
-                    if (!config.regions.Contains(regionname))
-                    {
-                        config.regions.Add(regionname);
-                        config.Write(ConfigPath);
-                    }
-                    args.Player.SendSuccessMessage("Region was successfully added to the refill function: {0}", regionname);
+                    config.regions.Add(regionname);
+                    config.Write(SavePath);
                 }
-
+                args.Player.SendSuccessMessage("Region was successfully added to the refill function: {0}", regionname);
             }
             else if (args.Parameters[0] == "del")
             {
@@ -234,20 +230,20 @@ namespace InfinityChests
                 }
                 else if (regionname.Length != 0)
                 {
-                    if (!config.chestnames.Contains(regionname))
+                        
+                    if (!config.regions.Contains(regionname))
                     {
                         args.Player.SendErrorMessage("Invalid region name! /cr list <page>");
                         return;
                     }
                     config.regions.Remove(regionname);
-                    config.Write(ConfigPath);
+                    config.Write(SavePath);
                     args.Player.SendSuccessMessage("Region was successfully deleted from the refill function: {0}", regionname);
                 }
             }
             else if (args.Parameters[0] == "list")
             {
-                int pageNumber = 1;
-                if (!PaginationTools.TryParsePageNumber(args.Parameters, 1, args.Player, out pageNumber))
+                if (!PaginationTools.TryParsePageNumber(args.Parameters, 1, args.Player, out int pageNumber))
                     return;
                 IEnumerable<string> strings = (IEnumerable<string>)(from regions in config.regions select regions);
                 PaginationTools.SendPage(args.Player, pageNumber, PaginationTools.BuildLinesFromTerms(strings, maxCharsPerLine: 75),
@@ -305,12 +301,13 @@ namespace InfinityChests
                     args.Player.SendErrorMessage("Invalid syntax! /cr -c add <string>");
                     return;
                 }
-                if (args.Parameters[2].Length != 0 && !config.regions.Contains(args.Parameters[2]))
+                var chestName = args.Parameters[2];
+                if (chestName.Length != 0 && !config.chestnames.Contains(chestName))
                 {
-                    config.chestnames.Add(args.Parameters[2]);
-                    config.Write(ConfigPath);
-                    args.Player.SendSuccessMessage("Chest was successfully added to the refill function: {0}", args.Parameters[2]);
+                    config.chestnames.Add(chestName);
+                    config.Write(SavePath);
                 }
+                args.Player.SendSuccessMessage("Chest was successfully added to the refill function: {0}", args.Parameters[2]);
             }
             else if (args.Parameters[0] == "-c" && args.Parameters[1] == "del")
             {
@@ -319,7 +316,8 @@ namespace InfinityChests
                     args.Player.SendErrorMessage("Invalid Syntax! /cr -c del <string>");
                     return;
                 }
-                else if (!config.chestnames.Contains(args.Parameters[2]))
+                var chestName = args.Parameters[2];
+                if (!config.chestnames.Contains(chestName))
                 {
                     args.Player.SendErrorMessage("Invalid chest name! /cr -c list");
                     return;
@@ -327,14 +325,13 @@ namespace InfinityChests
                 else if (args.Parameters[2].Length != 0)
                 {
                     config.chestnames.Remove(args.Parameters[2]);
-                    config.Write(ConfigPath);
+                    config.Write(SavePath);
                     args.Player.SendSuccessMessage("Chest was successfully removed from the refill function: {0}", args.Parameters[2]);
                 }
             }
             else if (args.Parameters[0] == "-c" && args.Parameters[1] == "list")
             {
-                int pageNumber = 1;
-                if (!PaginationTools.TryParsePageNumber(args.Parameters, 2, args.Player, out pageNumber))
+                if (!PaginationTools.TryParsePageNumber(args.Parameters, 2, args.Player, out int pageNumber))
                     return;
                 IEnumerable<string> strings = (IEnumerable<string>)(from chests in config.chestnames select chests);
                 PaginationTools.SendPage(args.Player, pageNumber, PaginationTools.BuildLinesFromTerms(strings, maxCharsPerLine: 75),
@@ -345,6 +342,20 @@ namespace InfinityChests
                 });
             }
             #endregion
+        }
+
+        private void OnReload(ReloadEventArgs e)
+        {
+            try
+            {
+                config = Config.Read(SavePath);
+                e.Player.SendSuccessMessage("[Infinity Chests] Successfully reloaded config.");
+            }
+            catch (Exception ex)
+            {
+                config.Write(SavePath);
+                TShock.Log.ConsoleError($"[Infinity Chests] {ex.Message}");
+            }
         }
     }
 }
