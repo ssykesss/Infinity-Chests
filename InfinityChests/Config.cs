@@ -9,19 +9,22 @@ namespace InfinityChests
         public List<string> regions = new();
         public List<string> chestnames = new();
 
-        public void Write(string path)
+        public void Write()
         {
+            string path = @"tshock\InfinityChests.json";
             File.WriteAllText(path, JsonConvert.SerializeObject(this, Formatting.Indented));
         }
-        public static Config Read(string path)
+        public static Config Read()
         {
-            Config config = new Config();
+            string path = @"tshock\InfinityChests.json";
+            Config config = new();
             if (!File.Exists(path))
             {
-                config.Write(path);
+                config.Write();
                 return config;
             }
             config = JsonConvert.DeserializeObject<Config>(File.ReadAllText(path));
+            config.Write();
             return config; 
         }
     }
