@@ -13,12 +13,12 @@ namespace InfinityChests
     [ApiVersion(2, 1)]
     public class Plugin : TerrariaPlugin
     {
-        public override string Author => "Lord Diogen & !skxdwlker";
+        public override string Author => "oli";
         public override string Name => "Infinity Chests";
         public override Version Version => new(2, 0);
 
-        private static bool _refillItemsByRegionName = true;
-        private static bool _refillItemsByChestName = true;
+        public static bool refillItemsByRegionName = true;
+        public static bool refillItemsByChestName = true;
         private static Config config = Config.Read();
         public Plugin(Main game) : base(game) { }
 
@@ -42,75 +42,61 @@ namespace InfinityChests
 
         private void OnGetData(GetDataEventArgs e)
         {
-            var player = TShock.Players[e.Msg.whoAmI];
-            if (player == null)
+            if (TShock.Players[e.Msg.whoAmI] is not TSPlayer player)
                 return;
-            if (e.MsgID == PacketTypes.ChestItem)
+            using var reader = new BinaryReader(new MemoryStream(e.Msg.readBuffer, e.Index, e.Length));
+            switch ((int)e.MsgID)
             {
-                using var r = new BinaryReader(new MemoryStream(e.Msg.readBuffer, e.Index, e.Length));
-                var chestID = r.ReadInt16();
-                var slot = r.ReadByte();
-                var stack = r.ReadInt16();
-                var prefix = r.ReadByte();
-                var itemID = r.ReadInt16();
-
-                if (chestID < 0 || chestID >= 8000)
-                    return;
-                Chest chest = Main.chest[chestID];
-                if (TShock.Regions.InAreaRegion(chest.x, chest.y).Any(r => config.regions.Contains(r.Name)) && _refillItemsByRegionName || config.chestnames.Contains(chest.name) && _refillItemsByChestName)
-                {
-                    e.Handled = true;
-                    Item old = chest.item[slot];
-                    NetMessage.SendData(32, -1, -1, null, chestID, slot, old.stack, old.prefix, old.type);
-                }
-            }
-            else if (e.MsgID == PacketTypes.ChestGetContents)
-            {
-                using var r = new BinaryReader(new MemoryStream(e.Msg.readBuffer, e.Index, e.Length));
-                int x = r.ReadInt16();
-                int y = r.ReadInt16();
-                int index = Chest.FindChest(x, y);
-                if (index < 0 || index >= 8000)
-                    return;
-                if (ChestLock(player, Main.chest[index].name, x, y))
-                {
-                    player.SendErrorMessage("Chest refill disabled.");
-                    e.Handled = true;
-                }
-                else
-                {
-                    for (int i = 0; i < 40; i++)
-                        NetMessage.SendData(32, player.Index, -1, null, index, i);
-                    NetMessage.SendData(33, player.Index, -1, null, index);
-                    if (player.HasBuildPermission(y, x, false) || player.HasPermission("infchests.edit"))
+                case 31:
+                    int x = reader.ReadInt16();
+                    int y = reader.ReadInt16();
+                    int index = Chest.FindChest(x, y);
+                    if (index < 0 || index >= 8000)
                         return;
+                    if (ChestLock(player, Main.chest[index].name, x, y))
+                        e.Handled = true;
+                    else
+                    {
+                        for (int i = 0; i < 40; i++)
+                            NetMessage.SendData(32, player.Index, -1, null, index, i);
+                        NetMessage.SendData(33, player.Index, -1, null, index);
+                        if (player.HasBuildPermission(y, x, false) || player.HasPermission("infchests.edit"))
+                            return;
+                        e.Handled = true;
+                    }
+                    return;
+                case 32:
+                    var chestID = reader.ReadInt16();
+                    var slot = reader.ReadByte();
+                    var stack = reader.ReadInt16();
+                    var prefix = reader.ReadByte();
+                    var itemID = reader.ReadInt16();
+
+                    if (chestID < 0 || chestID >= 8000)
+                        return;
+                    Chest chest = Main.chest[chestID];
+                    if (TShock.Regions.InAreaRegion(chest.x, chest.y).Any(r => config.regions.Contains(r.Name)) && refillItemsByRegionName || config.chestnames.Contains(chest.name) && refillItemsByChestName)
+                    {
+                        e.Handled = true;
+                        NetMessage.SendData(32, -1, -1, null, chestID, slot);
+                    }
+                    return;
+                case 33:
                     e.Handled = true;
-                }
+                    return;
             }
         }
-        private static bool ChestLock(TSPlayer player, string chest, int x, int y)
+        private static bool ChestLock(TSPlayer player, string chestName, int x, int y)
         {
-            if (config.chestnames.Contains(chest))
+            if (config.chestnames.Contains(chestName))
             {
-                if (!_refillItemsByChestName)
-                {
-                    if (player.HasPermission("infchests.ignore"))
-                    {
-                        return false;
-                    }
-                    return true;
-                }
+                if (!refillItemsByChestName)
+                    return !player.HasPermission("infchests.ignore");
             }
-            else if (TShock.Regions.InAreaRegion(x, y).Any(r => config.regions.Contains(r.Name)))
+            if (TShock.Regions.InAreaRegion(x, y).Any(r => config.regions.Contains(r.Name)))
             {
-                if (!_refillItemsByRegionName)
-                {
-                    if (player.HasPermission("infchests.ignore"))
-                    {
-                        return false;
-                    }
-                    return true;
-                }
+                if (!refillItemsByRegionName)
+                    return !player.HasPermission("infchests.ignore");               
             }
             return false;
         }
@@ -122,7 +108,7 @@ namespace InfinityChests
                     return;
 
                 var player = TShock.Players[e.ignoreClient];
-                if (player == null || player.HasPermission("tm.staff"))
+                if (player == null || player.HasPermission("infchests.edit"))
                     return;
 
                 Chest chest = Main.chest[e.number];
@@ -147,11 +133,11 @@ namespace InfinityChests
             switch (e.Parameters.Count < 1 ? "help" : e.Parameters[0].ToLower())
             {
                 case "help":
-                    e.Player.SendInfoMessage("/chest add <region> - Добавить регион в список.");
-                    e.Player.SendInfoMessage("/chest del <region> - Удалить регион из списка.");
-                    e.Player.SendInfoMessage("/chest list <page> - Список регионов.");
-                    e.Player.SendInfoMessage("/chest <on/off> - Включить/Выключить восстановление предметов от региона.");
-                    e.Player.SendInfoMessage("/chest -c <add, del, list, on/off> - Восставновление предметов от имени сундука. (Префикс: -c)");
+                    e.Player.SendInfoMessage("/chest add <region> - (Добавляет регион в список)");
+                    e.Player.SendInfoMessage("/chest del <region> - (Удаляет регион из списка)");
+                    e.Player.SendInfoMessage("/chest list <page> - (Список регионов)");
+                    e.Player.SendInfoMessage("/chest <on/off> - (Включает/Отключает восстановление предметов в регионах)");
+                    e.Player.SendInfoMessage(">> /chest -c <help>");
                     return;
                 case "add":
                     if (e.Parameters.Count > 1)
@@ -213,89 +199,78 @@ namespace InfinityChests
                 case "-c":
                     if (e.Parameters.Count > 1)
                     {
-                        string param = e.Parameters[1].ToLower();
-                        if (param == "add")
+                        switch (e.Parameters[1].ToLower())
                         {
-                            if (e.Parameters.Count > 2)
-                            {
-                                string chest = e.Parameters[2];
-                                if (config.chestnames.Contains(chest))
-                                {
-                                    e.Player.SendErrorMessage("Этот сундук уже есть в списке! '{0}'", chest);
-                                }
-                                else
-                                {
-                                    config.chestnames.Add(chest);
-                                    config.Write();
-                                    e.Player.SendSuccessMessage("Сундук успешно добавлен в список! '{0}'", chest);
-                                }
-                            }
-                            else
-                            {
-                                e.Player.SendErrorMessage("Неверный формат! /chest -c add <chest>");
-                            }
-                        }
-                        else if (param == "del")
-                        {
-                            if (e.Parameters.Count > 2)
-                            {
-                                string chest = e.Parameters[2];
-                                if (!config.chestnames.Contains(chest))
-                                {
-                                    e.Player.SendErrorMessage("Этого сундука нет в списке! '{0}'", chest);
-                                }
-                                else
-                                {
-                                    config.chestnames.Remove(chest);
-                                    config.Write();
-                                    e.Player.SendSuccessMessage("Сундук успешно удалён из списка! '{0}'", chest);
-                                }
-                            }
-                            else
-                            {
-                                e.Player.SendErrorMessage("Неверный формат! /chest -c del <chest>");
-                            }
-                        }
-                        else if (param == "list")
-                        {
-                            if (!PaginationTools.TryParsePageNumber(e.Parameters, 2, e.Player, out int page))
+                            case "help":
+                                e.Player.SendInfoMessage("/chest -c add <chest name> - (Добавляет имя сундука в список)");
+                                e.Player.SendInfoMessage("/chest -c del <chest name> - (Удаляет имя сундука из списка)");
+                                e.Player.SendInfoMessage("/chest -c list <page> - (Список имён сундуков)");
+                                e.Player.SendInfoMessage("/chest -c <on/off> - (Включает/Отключает восстановление вещей в сундуках с именами из списка)");
                                 return;
-                            IEnumerable<string> strings = from chests in config.chestnames select chests;
-                            PaginationTools.SendPage(e.Player, page, PaginationTools.BuildLinesFromTerms(strings, maxCharsPerLine: 75), new()
-                            {
-                                HeaderFormat = "Список имён сундуков с восстановлением предметов",
-                                FooterFormat = "Следующая страница /chest -с list {0}",
-                                NothingToDisplayString = "Нет сундуков в списке.",
-                            });
-                        }
-                        else if (param == "on")
-                        {
-                            _refillItemsByChestName = true;
-                            e.Player.SendSuccessMessage("Восстановление вещей от имени сундуков: Включенно.");
-                        }
-                        else if (param == "off")
-                        {
-                            _refillItemsByChestName = false;
-                            SendChestOpen(e.Player.Index);
-                            e.Player.SendSuccessMessage("Восстановление вещей от имени сундуков: Отключенно.");
-                        }
-                        else
-                        {
-                            e.Player.SendErrorMessage("Такого параметра не существует! /chest -c <add, del, list, on/off>");
+                            case "add":
+                                if (e.Parameters.Count > 2)
+                                {
+                                    string chestName = e.Parameters[2];
+                                    if (config.chestnames.Contains(chestName))
+                                        e.Player.SendErrorMessage("Этот сундук уже есть в списке! '{0}'", chestName);
+                                    else
+                                    {
+                                        config.chestnames.Add(chestName);
+                                        config.Write();
+                                        e.Player.SendSuccessMessage("Сундук успешно добавлен в список! '{0}'", chestName);
+                                    }
+                                }
+                                else
+                                    e.Player.SendErrorMessage("Неверный формат! /chest -c add <chest>");
+                                return;
+                            case "del":
+                                if (e.Parameters.Count > 2)
+                                {
+                                    string chestName = e.Parameters[2];
+                                    if (!config.chestnames.Contains(chestName))
+                                        e.Player.SendErrorMessage("Этого сундука нет в списке! '{0}'", chestName);
+                                    else
+                                    {
+                                        config.chestnames.Remove(chestName);
+                                        config.Write();
+                                        e.Player.SendSuccessMessage("Сундук успешно удалён из списка! '{0}'", chestName);
+                                    }
+                                }
+                                else
+                                    e.Player.SendErrorMessage("Неверный формат! /chest -c del <chest>");
+                                return;
+                            case "list":
+                                if (!PaginationTools.TryParsePageNumber(e.Parameters, 2, e.Player, out int page))
+                                    return;
+                                IEnumerable<string> strings = from chests in config.chestnames select chests;
+                                PaginationTools.SendPage(e.Player, page, PaginationTools.BuildLinesFromTerms(strings, maxCharsPerLine: 75), new()
+                                {
+                                    HeaderFormat = "Список имён сундуков с восстановлением предметов",
+                                    FooterFormat = "Следующая страница /chest -с list {0}",
+                                    NothingToDisplayString = "Нет сундуков в списке.",
+                                });
+                                return;
+                            case "on":
+                                refillItemsByChestName = true;
+                                e.Player.SendSuccessMessage("Восстановление вещей от имени сундуков: Включенно.");
+                                return;
+                            case "off":
+                                refillItemsByChestName = false;
+                                NetMessage.SendData(33, -1, e.Player.Index, null, -1);
+                                e.Player.SendSuccessMessage("Восстановление вещей от имени сундуков: Отключенно.");
+                                return;
                         }
                     }
                     else
-                    {
                         goto case "help";
-                    }
                     return;
                 case "off":
-                    _refillItemsByRegionName = false;
-                    SendChestOpen(e.Player.Index);
+                    refillItemsByRegionName = false;
+                    NetMessage.SendData(33, -1, e.Player.Index, null, -1);
                     e.Player.SendSuccessMessage("Восстановление вещей сундуков в регионах: Отключенно.");
                     return;
                 case "on":
-                    _refillItemsByRegionName = true;
+                    refillItemsByRegionName = true;
                     e.Player.SendSuccessMessage("Восстановление вещей сундуков в регионах: Включенно.");
                     return;
                 default:
@@ -311,18 +286,7 @@ namespace InfinityChests
             }
             catch (Exception ex)
             {
-                TShock.Log.ConsoleError($"[Infinity Chests] {ex.Message}");
-            }
-        }
-        private static void SendChestOpen(int ignoreClient)
-        {
-            for (int plr = 0; plr < 255; plr++)
-            {
-                if (plr == ignoreClient)
-                {
-                    continue;
-                }
-                NetMessage.SendData(33, plr, -1, null, -1);
+                TShock.Log.ConsoleError($"[Infinity Chests] Config reload error: {ex.Message}");
             }
         }
     }

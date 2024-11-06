@@ -6,17 +6,17 @@ namespace InfinityChests
 {
     public class Config
     {
+        private static readonly string path = @"tshock\InfinityChests.json";
+
         public List<string> regions = new();
         public List<string> chestnames = new();
 
         public void Write()
         {
-            string path = @"tshock\InfinityChests.json";
             File.WriteAllText(path, JsonConvert.SerializeObject(this, Formatting.Indented));
         }
         public static Config Read()
         {
-            string path = @"tshock\InfinityChests.json";
             Config config = new();
             if (!File.Exists(path))
             {
