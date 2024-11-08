@@ -92,13 +92,15 @@ namespace InfinityChests
             {
                 if (!refillItemsByChestName)
                     return !player.HasPermission("infchests.ignore");
+                return false;
             }
             if (TShock.Regions.InAreaRegion(x, y).Any(r => config.regions.Contains(r.Name)))
             {
                 if (!refillItemsByRegionName)
-                    return !player.HasPermission("infchests.ignore");               
+                    return !player.HasPermission("infchests.ignore");
+                return false;
             }
-            return false;
+            return true;
         }
         private static void OnSendData(SendDataEventArgs e)
         {
