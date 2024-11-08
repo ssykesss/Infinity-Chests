@@ -81,7 +81,7 @@ namespace InfinityChests
                         NetMessage.SendData(32, -1, -1, null, chestID, slot);
                     }
                     return;
-                case 33:
+                case 85:
                     e.Handled = true;
                     return;
             }
