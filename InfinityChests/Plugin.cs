@@ -100,7 +100,7 @@ namespace InfinityChests
                     return !player.HasPermission("infchests.ignore");
                 return false;
             }
-            return true;
+            return !player.HasBuildPermission(x, y, false);
         }
         private static void OnSendData(SendDataEventArgs e)
         {
